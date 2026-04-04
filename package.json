@@ -93,7 +93,8 @@
     "appId": "team.fdev.ntts.desktop",
     "productName": "NTTS API GUI",
     "directories": {
-      "output": "release"
+      "output": "release",
+      "buildResources": "build"
     },
     "files": [
       "dist/**/*",
@@ -105,7 +106,7 @@
     "extraMetadata": {
       "main": "electron/main.mjs"
     },
-    "icon": "src/assets/icon.png",
+    "icon": "build/icon.png",
     "linux": {
       "target": [
         "AppImage",
@@ -113,15 +114,17 @@
         "tar.gz"
       ],
       "category": "Utility",
-      "icon": "src/assets/icon.png"
+      "icon": "build/icon.png"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         "nsis",
         "portable"
       ]
     },
     "mac": {
+      "icon": "build/icon.png",
       "target": [
         "dmg",
         "zip"
