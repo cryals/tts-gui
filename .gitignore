@@ -3,3 +3,42 @@ dist/
 release/
 .DS_Store
 *.log
+
+# Build artifacts
+*.AppImage
+*.deb
+*.rpm
+*.tar.gz
+*.dmg
+*.exe
+*.zip
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+Thumbs.db
+.Spotlight-V100
+.Trashes
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Testing
+coverage/
+.nyc_output/
+
+# Electron
+out/
+build/electron/
