@@ -1,4 +1,6 @@
 import { Component, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "../i18n";
 import {
   Alert,
   AppBar,
@@ -46,6 +48,7 @@ import {
 import tallLogoImage from "../assets/tall-logo.png";
 import AudioPlayer from "../components/AudioPlayer";
 import UpdateChecker from "../components/UpdateChecker";
+import LanguageSelector from "../components/LanguageSelector";
 import { api } from "../services/api";
 import { storage } from "../services/storage";
 import type { Voice, VoicesResponse, RuntimeInfo, Notice, ApiError } from "../types/api";
@@ -285,10 +288,10 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
         <Box sx={{ minHeight: "100vh", bgcolor: "background.default", p: 3 }}>
           <Paper sx={{ maxWidth: 900, mx: "auto", p: 3, border: "1px solid #343b43", borderRadius: 2 }}>
             <Typography variant="h6" sx={{ mb: 1 }}>
-              Интерфейс упал
+              {i18n.t("errorBoundary.title")}
             </Typography>
             <Typography color="text.secondary" sx={{ mb: 2 }}>
-              Ниже текст ошибки renderer. Белого экрана больше не будет.
+              {i18n.t("errorBoundary.description")}
             </Typography>
             <Paper sx={{ p: 2, bgcolor: "#1f242b", border: "1px solid #343b43", borderRadius: 2 }}>
               <Typography component="pre" sx={{ m: 0, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
@@ -305,6 +308,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 
 export default function App() {
+  const { t } = useTranslation();
   const [token, setToken] = useState("");
   const [showToken, setShowToken] = useState(false);
   const [activeTab, setActiveTab] = useState<TabValue>("voices");
@@ -380,16 +384,16 @@ export default function App() {
       const apiError = error as ApiError;
       switch (apiError.type) {
         case "auth":
-          notify("Ошибка авторизации. Проверьте токен.", "error");
+          notify(t("notifications.authError"), "error");
           break;
         case "network":
-          notify("Ошибка сети. Проверьте подключение.", "error");
+          notify(t("notifications.networkError"), "error");
           break;
         case "validation":
           notify(apiError.message, "error");
           break;
         case "server":
-          notify("Ошибка сервера. Попробуйте позже.", "error");
+          notify(t("notifications.serverError"), "error");
           break;
         default:
           notify(apiError.message, "error");
@@ -401,7 +405,7 @@ export default function App() {
 
   const ensureToken = () => {
     if (token.trim()) return true;
-    notify("Введите токен API.", "error");
+    notify(t("notifications.enterToken"), "error");
     return false;
   };
 
@@ -414,7 +418,7 @@ export default function App() {
       const normalized = normalizeVoicesResponse(data);
       console.log("voices.loaded", normalized);
       setVoices(normalized);
-      notify("Голоса загружены.", "success");
+      notify(t("notifications.voicesLoaded"), "success");
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -429,7 +433,7 @@ export default function App() {
     try {
       const effects = await api.fetchEffects(token, useCache);
       setEffects(effects);
-      notify("Эффекты загружены.", "success");
+      notify(t("notifications.effectsLoaded"), "success");
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -446,7 +450,7 @@ export default function App() {
   const synthesizeSpeech = async () => {
     if (!ensureToken()) return;
     if (!selectedSpeaker || !text.trim()) {
-      notify("Выберите голос и введите текст.", "error");
+      notify(t("notifications.selectVoiceAndText"), "error");
       return;
     }
 
@@ -456,7 +460,7 @@ export default function App() {
 
       const blob = await api.synthesizeSpeech(token, selectedSpeaker, text, format, selectedEffect);
       setAudioUrl(URL.createObjectURL(blob));
-      notify("Аудио сгенерировано.", "success");
+      notify(t("notifications.audioGenerated"), "success");
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -467,7 +471,7 @@ export default function App() {
   const addCustomVoice = async () => {
     if (!ensureToken()) return;
     if (!newVoiceName.trim() || !audioFile) {
-      notify("Нужны имя голоса и аудиофайл.", "error");
+      notify(t("notifications.voiceNameAndFileRequired"), "error");
       return;
     }
 
@@ -478,7 +482,7 @@ export default function App() {
       setAudioFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       await fetchVoices(false);
-      notify(data.message ?? "Голос добавлен.", "success");
+      notify(data.message ?? t("notifications.voiceAdded"), "success");
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -488,13 +492,13 @@ export default function App() {
 
   const deleteVoice = async (speakerName: string) => {
     if (!ensureToken()) return;
-    if (!window.confirm(`Удалить голос ${speakerName}?`)) return;
+    if (!window.confirm(t("notifications.confirmDelete", { name: speakerName }))) return;
 
     setIsLoading(true);
     try {
       const data = await api.deleteVoice(token, speakerName);
       await fetchVoices(false);
-      notify(data.message ?? "Голос удален.", "success");
+      notify(data.message ?? t("notifications.voiceDeleted"), "success");
     } catch (error) {
       handleApiError(error);
     } finally {
@@ -545,7 +549,7 @@ export default function App() {
           data: Array.from(new Uint8Array(arrayBuffer)),
         });
         if (!result.canceled) {
-          notify(`Файл сохранен: ${result.filePath}`, "success");
+          notify(t("notifications.fileSaved", { path: result.filePath }), "success");
         }
         return;
       }
@@ -577,7 +581,7 @@ export default function App() {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         <UpdateChecker />
-        <Box sx={{ minHeight: "100vh" }}>
+        <Box sx={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
           <AppBar position="sticky">
             <Toolbar sx={{ gap: 2, py: 1.25, flexWrap: "wrap" }}>
               <Box sx={{ display: "flex", alignItems: "center", minWidth: 0 }}>
@@ -591,7 +595,7 @@ export default function App() {
               <TextField
                 hiddenLabel
                 size="small"
-                placeholder="Bearer token"
+                placeholder={t("header.tokenPlaceholder")}
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
                 type={showToken ? "text" : "password"}
@@ -607,18 +611,19 @@ export default function App() {
                 }}
               />
               <Button variant="contained" startIcon={<RefreshRounded />} onClick={refreshAll} disabled={isLoading}>
-                Обновить
+                {t("header.refreshButton")}
               </Button>
             </Toolbar>
           </AppBar>
 
-          <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 2.5, md: 3 }, display: "grid", gap: 2 }}>
+          <Container maxWidth="lg" sx={{ flex: 1, display: "flex", flexDirection: "column", py: { xs: 2, sm: 2.5, md: 3 } }}>
+            <Box sx={{ display: "grid", gap: 2, flex: 1 }}>
             <Card>
               <CardContent sx={{ p: 0 }}>
                 <Tabs value={activeTab} onChange={(_, value: TabValue) => setActiveTab(value)} variant="scrollable">
-                  <Tab value="voices" label="Voices" />
-                  <Tab value="custom" label="Custom Voice" />
-                  <Tab value="synthesis" label="Speech Synthesis" />
+                  <Tab value="voices" label={t("tabs.voices")} />
+                  <Tab value="custom" label={t("tabs.custom")} />
+                  <Tab value="synthesis" label={t("tabs.synthesis")} />
                 </Tabs>
               </CardContent>
             </Card>
@@ -628,17 +633,17 @@ export default function App() {
                 <Stack spacing={0.75}>
                   <Typography variant="h6">
                     {activeTab === "voices"
-                      ? "Voice Library"
+                      ? t("voicesTab.title")
                       : activeTab === "custom"
-                        ? "Create Custom Voice"
-                        : "Synthesis Workspace"}
+                        ? t("customTab.title")
+                        : t("synthesisTab.title")}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
                     {activeTab === "voices"
-                      ? "Load available voices, inspect speaker IDs and send any voice straight to the synthesis tab."
+                      ? t("tabDescriptions.voices")
                       : activeTab === "custom"
-                        ? "Set the speaker name, add a reference audio file and upload it to the NTTS API."
-                        : "Select a speaker, choose audio format and effect, then generate and listen to the result."}
+                        ? t("tabDescriptions.custom")
+                        : t("tabDescriptions.synthesis")}
                   </Typography>
                 </Stack>
               </CardContent>
@@ -655,13 +660,13 @@ export default function App() {
                     sx={{ mb: 2 }}
                   >
                     <Stack spacing={0.5}>
-                      <Typography variant="h6">All Voices</Typography>
+                      <Typography variant="h6">{t("voicesTab.allVoices")}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        System voices and your uploaded custom voices.
+                        {t("voicesTab.description")}
                       </Typography>
                     </Stack>
                     <Button variant="outlined" startIcon={<RefreshRounded />} onClick={fetchVoices} disabled={isLoading}>
-                      Load voices
+                      {t("voicesTab.loadButton")}
                     </Button>
                   </Stack>
 
@@ -670,7 +675,7 @@ export default function App() {
                       <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid #343b43" }}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <LibraryMusicRounded fontSize="small" />
-                          <Typography variant="subtitle1">System Voices</Typography>
+                          <Typography variant="subtitle1">{t("voicesTab.systemVoices")}</Typography>
                           <Chip size="small" label={voices.voices.length} />
                         </Stack>
                       </Box>
@@ -687,7 +692,7 @@ export default function App() {
                               primary={voice.name || voice.speakers[0]}
                               secondary={[
                                 voice.speakers[0],
-                                voice.source ? `Source: ${voice.source}` : "",
+                                voice.source ? `${t("voicesTab.sourceLabel")}: ${voice.source}` : "",
                                 voice.description || "",
                               ]
                                 .filter(Boolean)
@@ -697,7 +702,7 @@ export default function App() {
                         ))}
                         {!voices.voices.length && (
                           <Box sx={{ px: 2, py: 1.5 }}>
-                            <Typography color="text.secondary">Голоса еще не загружены.</Typography>
+                            <Typography color="text.secondary">{t("voicesTab.noVoicesYet")}</Typography>
                           </Box>
                         )}
                       </List>
@@ -707,7 +712,7 @@ export default function App() {
                       <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid #343b43" }}>
                         <Stack direction="row" spacing={1} alignItems="center">
                           <GraphicEqRounded fontSize="small" />
-                          <Typography variant="subtitle1">Custom Voices</Typography>
+                          <Typography variant="subtitle1">{t("voicesTab.customVoices")}</Typography>
                           <Chip size="small" label={voices.custom_voices.length} />
                         </Stack>
                       </Box>
@@ -727,7 +732,7 @@ export default function App() {
                                   setActiveTab("synthesis");
                                 }}
                               >
-                                Выбрать
+                                {t("voicesTab.useButton")}
                               </Button>
                               <IconButton color="error" size="small" onClick={() => deleteVoice(voice.speakers[0])}>
                                 <DeleteOutlineRounded />
@@ -737,7 +742,7 @@ export default function App() {
                         ))}
                         {!voices.custom_voices.length && (
                           <Box sx={{ px: 2, py: 1.5 }}>
-                            <Typography color="text.secondary">Пока нет кастомных голосов.</Typography>
+                            <Typography color="text.secondary">{t("voicesTab.noCustomVoices")}</Typography>
                           </Box>
                         )}
                       </List>
@@ -752,17 +757,17 @@ export default function App() {
                 <CardContent sx={sectionCardSx}>
                   <Stack spacing={2.5}>
                     <Stack spacing={0.5}>
-                      <Typography variant="h6">Create Voice by Reference</Typography>
+                      <Typography variant="h6">{t("customTab.description")}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        The speaker name will be used as the API identifier for synthesis and deletion.
+                        {t("customTab.speakerNameHint")}
                       </Typography>
                     </Stack>
 
                     <TextField
-                      label="Speaker name"
+                      label={t("customTab.speakerNameLabel")}
                       value={newVoiceName}
                       onChange={(event) => setNewVoiceName(event.target.value)}
-                      placeholder="aaron"
+                      placeholder={t("customTab.speakerNamePlaceholder")}
                     />
 
                     <Paper
@@ -778,9 +783,9 @@ export default function App() {
                     >
                       <Stack spacing={1.5} alignItems="center">
                         <UploadFileRounded sx={{ fontSize: { xs: 32, md: 40 } }} />
-                        <Typography>Перетащите аудио сюда</Typography>
+                        <Typography>{t("customTab.dropAudioHere")}</Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Или выберите файл вручную
+                          {t("customTab.chooseManually")}
                         </Typography>
                         {audioFile && (
                           <Chip
@@ -790,10 +795,10 @@ export default function App() {
                         )}
                         <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
                           <Button variant="outlined" startIcon={<FolderOpenRounded />} onClick={chooseAudioFile} fullWidth>
-                            Выбрать файл
+                            {t("customTab.chooseFileButton")}
                           </Button>
                           <Button variant="outlined" onClick={() => setAudioFile(null)} disabled={!audioFile} fullWidth>
-                            Очистить
+                            {t("customTab.clearButton")}
                           </Button>
                         </Stack>
                       </Stack>
@@ -808,7 +813,7 @@ export default function App() {
 
                     <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
                       <Button variant="contained" startIcon={<UploadFileRounded />} onClick={addCustomVoice} disabled={isLoading}>
-                        Загрузить голос
+                        {t("customTab.uploadButton")}
                       </Button>
                     </Box>
                   </Stack>
@@ -821,20 +826,20 @@ export default function App() {
                 <CardContent sx={sectionCardSx}>
                   <Stack spacing={2.5}>
                     <Stack spacing={0.5}>
-                      <Typography variant="h6">Speech Synthesis</Typography>
+                      <Typography variant="h6">{t("synthesisTab.title")}</Typography>
                       <Typography variant="body2" color="text.secondary">
-                        Generate audio from text, listen to it in place and save the result to a file.
+                        {t("synthesisTab.description")}
                       </Typography>
                     </Stack>
 
                     <FormControl fullWidth variant="filled">
-                      <InputLabel id="speaker-label">Speaker</InputLabel>
+                      <InputLabel id="speaker-label">{t("synthesisTab.speakerLabel")}</InputLabel>
                       <Select
                         labelId="speaker-label"
                         value={selectedSpeaker}
                         onChange={(event) => setSelectedSpeaker(event.target.value)}
                       >
-                        <MenuItem value="">Select a voice</MenuItem>
+                        <MenuItem value="">{t("synthesisTab.speakerPlaceholder")}</MenuItem>
                         {allVoices.map((voice) => (
                           <MenuItem key={voice.speakers[0]} value={voice.speakers[0]}>
                             {(voice.name || voice.speakers[0]) + " • " + voice.speakers[0]}
@@ -845,7 +850,7 @@ export default function App() {
 
                     <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", sm: "120px 1fr", md: "140px 1fr" } }}>
                       <FormControl fullWidth variant="filled">
-                        <InputLabel id="format-label">Format</InputLabel>
+                        <InputLabel id="format-label">{t("synthesisTab.formatLabel")}</InputLabel>
                         <Select labelId="format-label" value={format} onChange={(event) => setFormat(event.target.value)}>
                           <MenuItem value="wav">wav</MenuItem>
                           <MenuItem value="ogg">ogg</MenuItem>
@@ -853,13 +858,13 @@ export default function App() {
                       </FormControl>
 
                       <FormControl fullWidth variant="filled">
-                        <InputLabel id="effect-label">Effect</InputLabel>
+                        <InputLabel id="effect-label">{t("synthesisTab.effectLabel")}</InputLabel>
                         <Select
                           labelId="effect-label"
                           value={selectedEffect}
                           onChange={(event) => setSelectedEffect(event.target.value)}
                         >
-                          <MenuItem value="">No effect</MenuItem>
+                          <MenuItem value="">{t("synthesisTab.noEffect")}</MenuItem>
                           {effects.map((effect) => (
                             <MenuItem key={effect} value={effect}>
                               {effect}
@@ -870,20 +875,20 @@ export default function App() {
                     </Box>
 
                     <TextField
-                      label="Text"
+                      label={t("synthesisTab.textLabel")}
                       multiline
                       minRows={8}
                       value={text}
                       onChange={(event) => setText(event.target.value)}
-                      placeholder="Введите текст для синтеза"
+                      placeholder={t("synthesisTab.textPlaceholder")}
                     />
 
                     <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1.5, sm: 1 }}>
                       <Button variant="outlined" startIcon={<WavesRounded />} onClick={fetchEffects} disabled={isLoading}>
-                        Загрузить эффекты
+                        {t("synthesisTab.loadEffectsButton")}
                       </Button>
                       <Button variant="contained" startIcon={<PlayArrowRounded />} onClick={synthesizeSpeech} disabled={isLoading}>
-                        Сгенерировать аудио
+                        {t("synthesisTab.generateButton")}
                       </Button>
                     </Stack>
 
@@ -893,41 +898,41 @@ export default function App() {
               </Card>
             )}
 
-            <Paper
-              sx={{
-                px: 2,
-                py: 1.25,
-                border: "1px solid #2d333b",
-                borderRadius: 2,
-                backgroundColor: "#20252b",
-              }}
-            >
+            </Box>
+          </Container>
+
+          <Box component="footer" sx={{ width: "100%", borderTop: "1px solid #2d333b", backgroundColor: "#20252b" }}>
+            <Container maxWidth="lg">
               <Stack
-                direction={{ xs: "column", md: "row" }}
-                spacing={1}
+                direction="row"
+                alignItems="center"
                 justifyContent="space-between"
-                alignItems={{ xs: "flex-start", md: "center" }}
+                sx={{ py: 1, px: 2, flexWrap: { xs: "wrap", sm: "nowrap" }, gap: { xs: 1, sm: 1 } }}
               >
-                <Typography variant="body2" sx={{ color: "#838c96" }}>
-                  Made by AL-S. API provided by FDev.
+                <Typography variant="body2" sx={{ color: "#838c96", whiteSpace: "nowrap", fontSize: { xs: 11, sm: 12 } }}>
+                  {t("footer.madeBy")}
                 </Typography>
-                <Stack direction="row" spacing={0.25} flexWrap="wrap" useFlexGap>
-                  <Button size="small" color="inherit" variant="text" endIcon={<OpenInNewRounded />} onClick={() => openExternal("https://ntts.fdev.team")}>
-                    Website
+                <Stack direction="row" alignItems="center" spacing={1} sx={{ flexWrap: "nowrap", gap: 0.5 }}>
+                  <LanguageSelector compact />
+                  <Button size="small" color="inherit" sx={{ px: 0.5, minWidth: "auto", fontSize: 11, lineHeight: 1.2, height: 24 }} endIcon={<OpenInNewRounded sx={{ fontSize: 12 }} />} onClick={() => openExternal("https://ntts.fdev.team")}>
+                    {t("footer.nttsWebsite")}
                   </Button>
-                  <Button size="small" color="inherit" variant="text" endIcon={<OpenInNewRounded />} onClick={() => openExternal("https://t.me/Technorch")}>
-                    Telegram Bot
+                  <Button size="small" color="inherit" sx={{ px: 0.5, minWidth: "auto", fontSize: 11, lineHeight: 1.2, height: 24 }} endIcon={<OpenInNewRounded sx={{ fontSize: 12 }} />} onClick={() => openExternal("https://t.me/Technorch")}>
+                    {t("footer.nttsTelegram")}
                   </Button>
-                  <Button size="small" color="inherit" variant="text" endIcon={<OpenInNewRounded />} onClick={() => openExternal("https://discord.gg")}>
-                    Discord
+                  <Button size="small" color="inherit" sx={{ px: 0.5, minWidth: "auto", fontSize: 11, lineHeight: 1.2, height: 24 }} endIcon={<OpenInNewRounded sx={{ fontSize: 12 }} />} onClick={() => openExternal("https://discord.gg")}>
+                    {t("footer.nttsDiscord")}
                   </Button>
-                  <Button size="small" color="inherit" variant="text" endIcon={<OpenInNewRounded />} onClick={() => openExternal("https://boosty.to")}>
-                    Boosty
+                  <Button size="small" color="inherit" sx={{ px: 0.5, minWidth: "auto", fontSize: 11, lineHeight: 1.2, height: 24 }} endIcon={<OpenInNewRounded sx={{ fontSize: 12 }} />} onClick={() => openExternal("https://boosty.to/fdevteam")}>
+                    {t("footer.nttsBoosty")}
+                  </Button>
+                  <Button size="small" color="inherit" sx={{ px: 0.5, minWidth: "auto", fontSize: 11, lineHeight: 1.2, height: 24 }} endIcon={<OpenInNewRounded sx={{ fontSize: 12 }} />} onClick={() => openExternal("https://boosty.to/cryalsss")}>
+                    {t("footer.developerBoosty")}
                   </Button>
                 </Stack>
               </Stack>
-            </Paper>
-          </Container>
+            </Container>
+          </Box>
 
           {isLoading ? <LinearProgress /> : null}
 

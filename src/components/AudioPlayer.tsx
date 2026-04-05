@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Box,
   Button,
@@ -26,6 +27,7 @@ type AudioPlayerProps = {
 };
 
 export default function AudioPlayer({ audioUrl, onDownload }: AudioPlayerProps) {
+  const { t } = useTranslation();
   const audioRef = useRef<HTMLAudioElement>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -170,7 +172,7 @@ export default function AudioPlayer({ audioUrl, onDownload }: AudioPlayerProps) 
           backgroundColor: "#1f242b",
         }}
       >
-        <Typography color="error">Ошибка загрузки аудио</Typography>
+        <Typography color="error">{t("audioPlayer.loadingError")}</Typography>
       </Paper>
     );
   }
@@ -185,7 +187,7 @@ export default function AudioPlayer({ audioUrl, onDownload }: AudioPlayerProps) 
       }}
     >
       <Stack spacing={2}>
-        <Typography variant="subtitle1">Сгенерированное аудио</Typography>
+        <Typography variant="subtitle1">{t("audioPlayer.generatedAudio")}</Typography>
 
         <audio ref={audioRef} src={audioUrl} preload="metadata" style={{ display: "none" }} />
 
@@ -235,7 +237,7 @@ export default function AudioPlayer({ audioUrl, onDownload }: AudioPlayerProps) 
 
               <Stack direction="row" spacing={1} alignItems="center">
                 <Typography variant="body2" sx={{ minWidth: 80 }}>
-                  Скорость:
+                  {t("audioPlayer.speed")}
                 </Typography>
                 <FormControl size="small" sx={{ minWidth: 80 }}>
                   <Select
@@ -259,7 +261,7 @@ export default function AudioPlayer({ audioUrl, onDownload }: AudioPlayerProps) 
                 onClick={onDownload}
                 sx={{ minWidth: { xs: "100%", sm: "auto" } }}
               >
-                Скачать
+                {t("audioPlayer.download")}
               </Button>
             </Stack>
           </>

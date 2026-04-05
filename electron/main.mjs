@@ -1,5 +1,6 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
-import { autoUpdater } from "electron-updater";
+import updater from "electron-updater";
+const { autoUpdater } = updater;
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -21,10 +22,10 @@ let mainWindow = null;
 
 function createWindow() {
   const win = new BrowserWindow({
-    width: 1560,
-    height: 1024,
-    minWidth: 1220,
-    minHeight: 820,
+    width: 1400,
+    height: 900,
+    minWidth: 1100,
+    minHeight: 720,
     backgroundColor: "#0f141a",
     title: "NTTS API GUI",
     icon: appIconPath,

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Button,
   Dialog,
@@ -20,11 +21,10 @@ type UpdateInfo = {
 
 type DownloadProgress = {
   percent: number;
-  transferred: number;
-  total: number;
 };
 
 export default function UpdateChecker() {
+  const { t, i18n } = useTranslation();
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo | null>(null);
   const [downloading, setDownloading] = useState(false);
@@ -66,7 +66,7 @@ export default function UpdateChecker() {
     try {
       const result = await window.updater.downloadUpdate();
       if (!result.success) {
-        setError(result.error || "Не удалось скачать обновление");
+        setError(result.error || t("updater.downloadFailed"));
         setDownloading(false);
       }
     } catch (err) {
@@ -85,13 +85,6 @@ export default function UpdateChecker() {
     setError(null);
   };
 
-  const formatBytes = (bytes: number): string => {
-    if (bytes === 0) return "0 Bytes";
-    const k = 1024;
-    const sizes = ["Bytes", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + " " + sizes[i];
-  };
 
   if (!updateAvailable && !updateReady) return null;
 
@@ -99,7 +92,7 @@ export default function UpdateChecker() {
     <Dialog open={updateAvailable || updateReady} onClose={handleClose} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: "flex", alignItems: "center", gap: 1 }}>
         <SystemUpdateRounded />
-        {updateReady ? "Обновление готово!" : "Доступно обновление!"}
+        {updateReady ? t("updater.updateReady") : t("updater.updateAvailable")}
       </DialogTitle>
       <DialogContent>
         {error && (
@@ -111,11 +104,11 @@ export default function UpdateChecker() {
         {updateInfo && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="body1" sx={{ mb: 1 }}>
-              Новая версия <strong>{updateInfo.version}</strong> доступна для установки.
+              {t("updater.newVersion")} <strong>{updateInfo.version}</strong> {t("updater.availableForInstall")}
             </Typography>
             {updateInfo.releaseDate && (
               <Typography variant="body2" color="text.secondary">
-                Дата релиза: {new Date(updateInfo.releaseDate).toLocaleDateString("ru-RU")}
+                {t("updater.releaseDate")} {new Date(updateInfo.releaseDate).toLocaleDateString(i18n.language === "ru" ? "ru-RU" : i18n.language === "uk" ? "uk-UA" : "en-US")}
               </Typography>
             )}
           </Box>
@@ -124,7 +117,7 @@ export default function UpdateChecker() {
         {downloading && (
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ mb: 1 }}>
-              Загрузка обновления... {downloadProgress}%
+              {t("updater.downloading")} {downloadProgress}%
             </Typography>
             <LinearProgress variant="determinate" value={downloadProgress} />
           </Box>
@@ -132,29 +125,30 @@ export default function UpdateChecker() {
 
         {updateReady && (
           <Alert severity="success" sx={{ mt: 2 }}>
-            Обновление загружено и готово к установке. Приложение будет перезапущено.
+            {t("updater.updateDownloaded")}
+
           </Alert>
         )}
       </DialogContent>
       <DialogActions>
         {!updateReady && !downloading && (
           <>
-            <Button onClick={handleClose}>Позже</Button>
+            <Button onClick={handleClose}>{t("updater.laterButton")}</Button>
             <Button
               variant="contained"
               startIcon={<CloudDownloadRounded />}
               onClick={handleDownload}
               disabled={downloading}
             >
-              Скачать
+              {t("updater.downloadButton")}
             </Button>
           </>
         )}
         {updateReady && (
           <>
-            <Button onClick={handleClose}>Отмена</Button>
+            <Button onClick={handleClose}>{t("updater.cancelButton")}</Button>
             <Button variant="contained" startIcon={<SystemUpdateRounded />} onClick={handleInstall}>
-              Установить и перезапустить
+              {t("updater.installButton")}
             </Button>
           </>
         )}

@@ -2,6 +2,8 @@
 
 Desktop Electron client for the NTTS API.
 
+Support the developer: https://boosty.to/cryalsss
+
 It provides a simple interface for:
 
 - loading available voices
