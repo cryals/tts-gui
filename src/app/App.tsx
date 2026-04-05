@@ -9,7 +9,6 @@ import {
   Chip,
   Container,
   CssBaseline,
-  Divider,
   FormControl,
   IconButton,
   InputAdornment,
@@ -32,7 +31,6 @@ import {
   createTheme,
 } from "@mui/material";
 import {
-  CloudDownloadRounded,
   DeleteOutlineRounded,
   FolderOpenRounded,
   GraphicEqRounded,
@@ -46,35 +44,13 @@ import {
   WavesRounded,
 } from "@mui/icons-material";
 import tallLogoImage from "../assets/tall-logo.png";
-
-type Voice = {
-  name: string;
-  description: string;
-  source: string;
-  gender: string;
-  speakers: string[];
-};
-
-type VoicesResponse = {
-  voices: Voice[];
-  custom_voices: Voice[];
-};
-
-type RuntimeInfo = {
-  appName: string;
-  platform: string;
-  version: string;
-  isPackaged: boolean;
-};
-
-type Notice = {
-  message: string;
-  severity: "success" | "error" | "info";
-};
+import AudioPlayer from "../components/AudioPlayer";
+import { api } from "../services/api";
+import { storage } from "../services/storage";
+import type { Voice, VoicesResponse, RuntimeInfo, Notice, ApiError } from "../types/api";
 
 type TabValue = "voices" | "custom" | "synthesis";
 
-const API_BASE = "https://ntts.fdev.team/api/v1/tts";
 const EMPTY_VOICES: VoicesResponse = { voices: [], custom_voices: [] };
 
 const theme = createTheme({
@@ -351,21 +327,10 @@ export default function App() {
     [voices.custom_voices, voices.voices],
   );
 
-  const headers = useMemo(
-    () => ({
-      Authorization: `Bearer ${token}`,
-    }),
-    [token],
-  );
-
   useEffect(() => {
-    const savedToken = window.localStorage.getItem("ntts-token");
-    const savedSpeaker = window.localStorage.getItem("ntts-speaker");
-    const savedText = window.localStorage.getItem("ntts-text");
-
-    if (savedToken) setToken(savedToken);
-    if (savedSpeaker) setSelectedSpeaker(savedSpeaker);
-    if (savedText) setText(savedText);
+    setToken(storage.loadToken());
+    setSelectedSpeaker(storage.loadSpeaker());
+    setText(storage.loadText());
 
     window.desktop?.getRuntimeInfo?.().then(setRuntimeInfo).catch(() => undefined);
   }, []);
@@ -388,21 +353,15 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (token.trim()) {
-      window.localStorage.setItem("ntts-token", token);
-    } else {
-      window.localStorage.removeItem("ntts-token");
-    }
+    storage.saveToken(token);
   }, [token]);
 
   useEffect(() => {
-    if (selectedSpeaker) {
-      window.localStorage.setItem("ntts-speaker", selectedSpeaker);
-    }
+    storage.saveSpeaker(selectedSpeaker);
   }, [selectedSpeaker]);
 
   useEffect(() => {
-    window.localStorage.setItem("ntts-text", text);
+    storage.saveTextDebounced(text);
   }, [text]);
 
   useEffect(() => {
@@ -415,49 +374,63 @@ export default function App() {
     setNotice({ message, severity });
   };
 
+  const handleApiError = (error: unknown) => {
+    if (typeof error === "object" && error !== null && "type" in error) {
+      const apiError = error as ApiError;
+      switch (apiError.type) {
+        case "auth":
+          notify("Ошибка авторизации. Проверьте токен.", "error");
+          break;
+        case "network":
+          notify("Ошибка сети. Проверьте подключение.", "error");
+          break;
+        case "validation":
+          notify(apiError.message, "error");
+          break;
+        case "server":
+          notify("Ошибка сервера. Попробуйте позже.", "error");
+          break;
+        default:
+          notify(apiError.message, "error");
+      }
+    } else {
+      notify(String(error), "error");
+    }
+  };
+
   const ensureToken = () => {
     if (token.trim()) return true;
     notify("Введите токен API.", "error");
     return false;
   };
 
-  const readJson = async <T,>(response: Response): Promise<T> => {
-    const payload = (await response.json()) as T & { message?: string };
-    if (!response.ok) {
-      throw new Error(payload.message ?? "Ошибка API.");
-    }
-    return payload;
-  };
-
-  const fetchVoices = async () => {
+  const fetchVoices = async (useCache: boolean = true) => {
     if (!ensureToken()) return;
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/speakers`, { headers });
-      const data = await readJson<unknown>(response);
+      const data = await api.fetchVoices(token, useCache);
       const normalized = normalizeVoicesResponse(data);
       console.log("voices.loaded", normalized);
       setVoices(normalized);
       notify("Голоса загружены.", "success");
     } catch (error) {
-      notify(`Не удалось загрузить голоса: ${String(error)}`, "error");
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const fetchEffects = async () => {
+  const fetchEffects = async (useCache: boolean = true) => {
     if (!ensureToken()) return;
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/effects`, { headers });
-      const data = await readJson<{ effects?: string[] }>(response);
-      setEffects(data.effects ?? []);
+      const effects = await api.fetchEffects(token, useCache);
+      setEffects(effects);
       notify("Эффекты загружены.", "success");
     } catch (error) {
-      notify(`Не удалось загрузить эффекты: ${String(error)}`, "error");
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -465,7 +438,8 @@ export default function App() {
 
   const refreshAll = async () => {
     if (!ensureToken()) return;
-    await Promise.all([fetchVoices(), fetchEffects()]);
+    api.clearCache();
+    await Promise.all([fetchVoices(false), fetchEffects(false)]);
   };
 
   const synthesizeSpeech = async () => {
@@ -479,26 +453,11 @@ export default function App() {
     try {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
 
-      const params = new URLSearchParams({
-        speaker: selectedSpeaker,
-        text: text.trim(),
-        ext: format,
-      });
-
-      if (selectedEffect) {
-        params.set("effect", selectedEffect);
-      }
-
-      const response = await fetch(`${API_BASE}?${params.toString()}`, { headers });
-      if (!response.ok) {
-        throw new Error("Ошибка синтеза.");
-      }
-
-      const blob = await response.blob();
+      const blob = await api.synthesizeSpeech(token, selectedSpeaker, text, format, selectedEffect);
       setAudioUrl(URL.createObjectURL(blob));
       notify("Аудио сгенерировано.", "success");
     } catch (error) {
-      notify(`Не удалось синтезировать речь: ${String(error)}`, "error");
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -513,24 +472,14 @@ export default function App() {
 
     setIsLoading(true);
     try {
-      const formData = new FormData();
-      formData.append("audio", audioFile);
-      formData.append("speaker_name", newVoiceName.trim());
-
-      const response = await fetch(`${API_BASE}/speakers`, {
-        method: "POST",
-        headers,
-        body: formData,
-      });
-
-      const data = await readJson<{ message?: string }>(response);
+      const data = await api.addCustomVoice(token, newVoiceName, audioFile);
       setNewVoiceName("");
       setAudioFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
-      await fetchVoices();
+      await fetchVoices(false);
       notify(data.message ?? "Голос добавлен.", "success");
     } catch (error) {
-      notify(`Не удалось создать голос: ${String(error)}`, "error");
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -542,16 +491,11 @@ export default function App() {
 
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/speakers/${speakerName}`, {
-        method: "DELETE",
-        headers,
-      });
-
-      const data = await readJson<{ message?: string }>(response);
-      await fetchVoices();
+      const data = await api.deleteVoice(token, speakerName);
+      await fetchVoices(false);
       notify(data.message ?? "Голос удален.", "success");
     } catch (error) {
-      notify(`Не удалось удалить голос: ${String(error)}`, "error");
+      handleApiError(error);
     } finally {
       setIsLoading(false);
     }
@@ -572,7 +516,7 @@ export default function App() {
         setNewVoiceName(file.name.replace(/\.[^/.]+$/, "").replace(/\s+/g, "_"));
       }
     } catch (error) {
-      notify(`Не удалось выбрать файл: ${String(error)}`, "error");
+      handleApiError(error);
     }
   };
 
@@ -610,7 +554,7 @@ export default function App() {
       link.download = fileName;
       link.click();
     } catch (error) {
-      notify(`Не удалось скачать аудио: ${String(error)}`, "error");
+      handleApiError(error);
     }
   };
 
@@ -624,7 +568,7 @@ export default function App() {
   };
 
   const sectionCardSx = {
-    p: { xs: 2, md: 2.5 },
+    p: { xs: 2, sm: 2.25, md: 2.5 },
   };
 
   return (
@@ -639,7 +583,7 @@ export default function App() {
                   component="img"
                   src={tallLogoImage}
                   alt="NTTS"
-                  sx={{ height: 24, width: "auto", objectFit: "contain", display: "block" }}
+                  sx={{ height: { xs: 20, md: 24 }, width: "auto", objectFit: "contain", display: "block" }}
                 />
               </Box>
               <TextField
@@ -649,7 +593,7 @@ export default function App() {
                 value={token}
                 onChange={(event) => setToken(event.target.value)}
                 type={showToken ? "text" : "password"}
-                sx={{ flex: 1, minWidth: 260, maxWidth: 760 }}
+                sx={{ flex: 1, minWidth: { xs: 200, sm: 260 }, maxWidth: { sm: 760 } }}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
@@ -661,12 +605,12 @@ export default function App() {
                 }}
               />
               <Button variant="contained" startIcon={<RefreshRounded />} onClick={refreshAll} disabled={isLoading}>
-                Refresh
+                Обновить
               </Button>
             </Toolbar>
           </AppBar>
 
-          <Container maxWidth="lg" sx={{ py: { xs: 2, md: 3 }, display: "grid", gap: 2 }}>
+          <Container maxWidth="lg" sx={{ py: { xs: 2, sm: 2.5, md: 3 }, display: "grid", gap: 2 }}>
             <Card>
               <CardContent sx={{ p: 0 }}>
                 <Tabs value={activeTab} onChange={(_, value: TabValue) => setActiveTab(value)} variant="scrollable">
@@ -719,7 +663,7 @@ export default function App() {
                     </Button>
                   </Stack>
 
-                  <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" } }}>
+                  <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" } }}>
                     <Paper sx={{ border: "1px solid #343b43", borderRadius: 2, overflow: "hidden" }}>
                       <Box sx={{ px: 2, py: 1.5, borderBottom: "1px solid #343b43" }}>
                         <Stack direction="row" spacing={1} alignItems="center">
@@ -751,7 +695,7 @@ export default function App() {
                         ))}
                         {!voices.voices.length && (
                           <Box sx={{ px: 2, py: 1.5 }}>
-                            <Typography color="text.secondary">No voices loaded yet.</Typography>
+                            <Typography color="text.secondary">Голоса еще не загружены.</Typography>
                           </Box>
                         )}
                       </List>
@@ -772,7 +716,7 @@ export default function App() {
                               primary={voice.name || voice.speakers[0]}
                               secondary={[voice.speakers[0], voice.description || ""].filter(Boolean).join(" • ")}
                             />
-                            <Stack direction="row" spacing={1}>
+                            <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
                               <Button
                                 size="small"
                                 variant="outlined"
@@ -781,9 +725,9 @@ export default function App() {
                                   setActiveTab("synthesis");
                                 }}
                               >
-                                Use
+                                Выбрать
                               </Button>
-                              <IconButton color="error" onClick={() => deleteVoice(voice.speakers[0])}>
+                              <IconButton color="error" size="small" onClick={() => deleteVoice(voice.speakers[0])}>
                                 <DeleteOutlineRounded />
                               </IconButton>
                             </Stack>
@@ -791,7 +735,7 @@ export default function App() {
                         ))}
                         {!voices.custom_voices.length && (
                           <Box sx={{ px: 2, py: 1.5 }}>
-                            <Typography color="text.secondary">No custom voices yet.</Typography>
+                            <Typography color="text.secondary">Пока нет кастомных голосов.</Typography>
                           </Box>
                         )}
                       </List>
@@ -831,10 +775,10 @@ export default function App() {
                       }}
                     >
                       <Stack spacing={1.5} alignItems="center">
-                        <UploadFileRounded />
-                        <Typography>Drop audio here</Typography>
+                        <UploadFileRounded sx={{ fontSize: { xs: 32, md: 40 } }} />
+                        <Typography>Перетащите аудио сюда</Typography>
                         <Typography variant="body2" color="text.secondary">
-                          Or choose a file manually
+                          Или выберите файл вручную
                         </Typography>
                         {audioFile && (
                           <Chip
@@ -842,12 +786,12 @@ export default function App() {
                             variant="outlined"
                           />
                         )}
-                        <Stack direction="row" spacing={1}>
-                          <Button variant="outlined" startIcon={<FolderOpenRounded />} onClick={chooseAudioFile}>
-                            Choose file
+                        <Stack direction={{ xs: "column", sm: "row" }} spacing={1} sx={{ width: { xs: "100%", sm: "auto" } }}>
+                          <Button variant="outlined" startIcon={<FolderOpenRounded />} onClick={chooseAudioFile} fullWidth>
+                            Выбрать файл
                           </Button>
-                          <Button variant="outlined" onClick={() => setAudioFile(null)} disabled={!audioFile}>
-                            Clear
+                          <Button variant="outlined" onClick={() => setAudioFile(null)} disabled={!audioFile} fullWidth>
+                            Очистить
                           </Button>
                         </Stack>
                       </Stack>
@@ -862,7 +806,7 @@ export default function App() {
 
                     <Box sx={{ display: "flex", justifyContent: "flex-start" }}>
                       <Button variant="contained" startIcon={<UploadFileRounded />} onClick={addCustomVoice} disabled={isLoading}>
-                        Upload voice
+                        Загрузить голос
                       </Button>
                     </Box>
                   </Stack>
@@ -897,7 +841,7 @@ export default function App() {
                       </Select>
                     </FormControl>
 
-                    <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", md: "180px 1fr" } }}>
+                    <Box sx={{ display: "grid", gap: 2, gridTemplateColumns: { xs: "1fr", sm: "120px 1fr", md: "140px 1fr" } }}>
                       <FormControl fullWidth variant="filled">
                         <InputLabel id="format-label">Format</InputLabel>
                         <Select labelId="format-label" value={format} onChange={(event) => setFormat(event.target.value)}>
@@ -929,31 +873,19 @@ export default function App() {
                       minRows={8}
                       value={text}
                       onChange={(event) => setText(event.target.value)}
-                      placeholder="Enter text for synthesis"
+                      placeholder="Введите текст для синтеза"
                     />
 
-                    <Stack direction={{ xs: "column", sm: "row" }} spacing={1}>
+                    <Stack direction={{ xs: "column", sm: "row" }} spacing={{ xs: 1.5, sm: 1 }}>
                       <Button variant="outlined" startIcon={<WavesRounded />} onClick={fetchEffects} disabled={isLoading}>
-                        Load effects
+                        Загрузить эффекты
                       </Button>
                       <Button variant="contained" startIcon={<PlayArrowRounded />} onClick={synthesizeSpeech} disabled={isLoading}>
-                        Generate audio
+                        Сгенерировать аудио
                       </Button>
                     </Stack>
 
-                    {audioUrl && (
-                      <Paper sx={{ p: 2, border: "1px solid #343b43", borderRadius: 2, backgroundColor: "#1f242b" }}>
-                        <Stack spacing={2}>
-                          <Typography variant="subtitle1">Generated Audio</Typography>
-                          <audio controls src={audioUrl} style={{ width: "100%" }} />
-                          <Box>
-                            <Button variant="outlined" startIcon={<CloudDownloadRounded />} onClick={downloadAudio}>
-                              Download
-                            </Button>
-                          </Box>
-                        </Stack>
-                      </Paper>
-                    )}
+                    {audioUrl && <AudioPlayer audioUrl={audioUrl} onDownload={downloadAudio} />}
                   </Stack>
                 </CardContent>
               </Card>
@@ -999,7 +931,7 @@ export default function App() {
 
           <Snackbar
             open={Boolean(notice)}
-            autoHideDuration={4000}
+            autoHideDuration={notice?.severity === "error" ? 6000 : 4000}
             onClose={() => setNotice(null)}
             anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
           >
