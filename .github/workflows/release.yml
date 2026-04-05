@@ -2,6 +2,9 @@ name: Release Builds
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
   schedule:
     - cron: "0 6 * * *"
 
@@ -18,6 +21,7 @@ jobs:
       should_release: ${{ steps.meta.outputs.should_release }}
       tag_name: ${{ steps.meta.outputs.tag_name }}
       release_name: ${{ steps.meta.outputs.release_name }}
+      is_version_tag: ${{ steps.meta.outputs.is_version_tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,29 +36,46 @@ jobs:
           script: |
             const { owner, repo } = context.repo;
             const currentSha = context.sha;
-            const releaseDate = new Date().toISOString().slice(0, 10);
-            const tagName = `daily-${releaseDate}`;
-            const releaseName = `Daily build ${releaseDate}`;
+            const ref = context.ref;
+
+            // Check if this is a version tag (v1.0.0, v1.2.3, etc)
+            const isVersionTag = ref.startsWith('refs/tags/v') && /^refs\/tags\/v\d+\.\d+\.\d+$/.test(ref);
+
+            let tagName, releaseName;
+
+            if (isVersionTag) {
+              // Version release (v1.0.0)
+              tagName = ref.replace('refs/tags/', '');
+              releaseName = `NTTS GUI ${tagName}`;
+            } else {
+              // Daily release
+              const releaseDate = new Date().toISOString().slice(0, 10);
+              tagName = `daily-${releaseDate}`;
+              releaseName = `Daily build ${releaseDate}`;
+            }
 
             let shouldRelease = true;
 
-            try {
-              const latest = await github.rest.repos.getLatestRelease({ owner, repo });
-              const latestTag = latest.data.tag_name;
-              const { execSync } = require("node:child_process");
-              const latestSha = execSync(`git rev-list -n 1 ${latestTag}`, { encoding: "utf8" }).trim();
+            if (!isVersionTag) {
+              try {
+                const latest = await github.rest.repos.getLatestRelease({ owner, repo });
+                const latestTag = latest.data.tag_name;
+                const { execSync } = require("node:child_process");
+                const latestSha = execSync(`git rev-list -n 1 ${latestTag}`, { encoding: "utf8" }).trim();
 
-              if (latestSha === currentSha) {
-                shouldRelease = false;
+                if (latestSha === currentSha) {
+                  shouldRelease = false;
+                }
+              } catch (error) {
+                core.info(`Latest release is not available or cannot be resolved: ${error.message}`);
+                shouldRelease = true;
               }
-            } catch (error) {
-              core.info(`Latest release is not available or cannot be resolved: ${error.message}`);
-              shouldRelease = true;
             }
 
             core.setOutput("should_release", shouldRelease ? "true" : "false");
             core.setOutput("tag_name", tagName);
             core.setOutput("release_name", releaseName);
+            core.setOutput("is_version_tag", isVersionTag ? "true" : "false");
 
   build:
     needs: prepare
@@ -129,4 +150,5 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag_name }}
           name: ${{ needs.prepare.outputs.release_name }}
           generate_release_notes: true
+          prerelease: ${{ needs.prepare.outputs.is_version_tag == 'false' }}
           files: release-artifacts/*

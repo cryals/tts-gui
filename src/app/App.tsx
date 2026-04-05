@@ -45,6 +45,7 @@ import {
 } from "@mui/icons-material";
 import tallLogoImage from "../assets/tall-logo.png";
 import AudioPlayer from "../components/AudioPlayer";
+import UpdateChecker from "../components/UpdateChecker";
 import { api } from "../services/api";
 import { storage } from "../services/storage";
 import type { Voice, VoicesResponse, RuntimeInfo, Notice, ApiError } from "../types/api";
@@ -575,6 +576,7 @@ export default function App() {
     <ErrorBoundary>
       <ThemeProvider theme={theme}>
         <CssBaseline />
+        <UpdateChecker />
         <Box sx={{ minHeight: "100vh" }}>
           <AppBar position="sticky">
             <Toolbar sx={{ gap: 2, py: 1.25, flexWrap: "wrap" }}>

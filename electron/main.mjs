@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from "electron";
+import { autoUpdater } from "electron-updater";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -11,6 +12,12 @@ const rendererUrl = process.env.ELECTRON_RENDERER_URL ?? "http://localhost:5173"
 const appIconPath = path.join(__dirname, "..", "src", "assets", "icon.png");
 
 app.setName("NTTS GUI");
+
+// Configure auto-updater
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
+
+let mainWindow = null;
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -39,6 +46,8 @@ function createWindow() {
       sandbox: false,
     },
   });
+
+  mainWindow = win;
 
   win.once("ready-to-show", () => {
     win.show();
@@ -91,6 +100,15 @@ if (!singleInstanceLock) {
   app.whenReady().then(() => {
     nativeTheme.themeSource = "dark";
     createWindow();
+
+    // Check for updates after window is created (only in production)
+    if (!isDev) {
+      setTimeout(() => {
+        autoUpdater.checkForUpdates().catch((err) => {
+          console.error("Failed to check for updates:", err);
+        });
+      }, 3000);
+    }
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) {
@@ -179,4 +197,88 @@ ipcMain.handle("desktop:save-audio", async (_event, payload) => {
   await writeFile(filePath, Buffer.from(data));
 
   return { canceled: false, filePath };
+});
+
+// Auto-updater IPC handlers
+ipcMain.handle("updater:check-for-updates", async () => {
+  if (isDev) {
+    return { available: false, message: "Updates disabled in development mode" };
+  }
+
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    return {
+      available: result && result.updateInfo.version !== app.getVersion(),
+      updateInfo: result?.updateInfo,
+    };
+  } catch (error) {
+    console.error("Check for updates failed:", error);
+    return { available: false, error: error.message };
+  }
+});
+
+ipcMain.handle("updater:download-update", async () => {
+  if (isDev) {
+    return { success: false, message: "Updates disabled in development mode" };
+  }
+
+  try {
+    await autoUpdater.downloadUpdate();
+    return { success: true };
+  } catch (error) {
+    console.error("Download update failed:", error);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle("updater:install-update", () => {
+  if (isDev) {
+    return;
+  }
+  autoUpdater.quitAndInstall(false, true);
+});
+
+// Auto-updater events
+autoUpdater.on("update-available", (info) => {
+  console.log("Update available:", info.version);
+  if (mainWindow) {
+    mainWindow.webContents.send("updater:update-available", {
+      version: info.version,
+      releaseDate: info.releaseDate,
+      releaseNotes: info.releaseNotes,
+    });
+  }
+});
+
+autoUpdater.on("update-not-available", () => {
+  console.log("Update not available");
+});
+
+autoUpdater.on("download-progress", (progress) => {
+  console.log(`Download progress: ${progress.percent}%`);
+  if (mainWindow) {
+    mainWindow.webContents.send("updater:download-progress", {
+      percent: progress.percent,
+      transferred: progress.transferred,
+      total: progress.total,
+    });
+  }
+});
+
+autoUpdater.on("update-downloaded", (info) => {
+  console.log("Update downloaded:", info.version);
+  if (mainWindow) {
+    mainWindow.webContents.send("updater:update-downloaded", {
+      version: info.version,
+    });
+  }
+});
+
+autoUpdater.on("error", (error) => {
+  console.error("Auto-updater error:", error);
+  if (mainWindow) {
+    mainWindow.webContents.send("updater:error", {
+      message: error.message,
+    });
+  }
 });
