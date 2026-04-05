@@ -24,6 +24,7 @@ It provides a simple interface for:
 - **Automatic Retry**: Failed requests are automatically retried with exponential backoff
 - **Responsive Design**: Works well on different screen sizes
 - **Native File Dialogs**: Native OS file pickers and save dialogs
+- **Auto-Update System**: Automatic update notifications and one-click updates
 
 ## Development
 
