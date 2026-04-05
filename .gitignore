@@ -20,6 +20,8 @@ release/
 *.swo
 *~
 
+.claude/
+
 # OS
 Thumbs.db
 .Spotlight-V100
@@ -42,3 +44,4 @@ coverage/
 # Electron
 out/
 build/electron/
+
